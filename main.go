@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -16,7 +15,7 @@ type logEntry struct {
 	isError                 bool
 	timestamp               string
 	PID, status             int
-	exception, errorLines   string
+	exception, lines        string
 	page, level, incomingIP string
 	ARtime, viewTime        int
 }
@@ -26,11 +25,13 @@ func main() {
 	scanner := bufio.NewScanner(bytes.NewReader(f))
 	scanner.Split(logEntrySplit)
 	for scanner.Scan() {
-		e := parseLogEntry(scanner.Text())
-		err := publishToES(e)
-		if err != nil {
-			log.Fatalf("could not publish to Elastic Search: %v", err)
-		}
+		t := scanner.Text()
+		e := parseLogEntry(t)
+		// err := publishToES(e)
+		// if err != nil {
+		// 	log.Fatalf("could not publish to Elastic Search: %v", err)
+		// }
+		fmt.Println(t, e, "---LOG LINE---")
 	}
 }
 
@@ -39,7 +40,6 @@ func parseLogEntry(stringEntry string) (e logEntry) {
 	timeData := IPRegexp.FindAllStringSubmatch(stringEntry, -1)[0]
 	e.timestamp = timeData[1]
 	e.PID, _ = strconv.Atoi(timeData[2])
-	fmt.Println(e)
 	return
 }
 
@@ -55,24 +55,21 @@ func publishToES(e logEntry) error {
 	return nil
 }
 
-func logEntrySplit(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	var errorLog []byte
-	var errorAdvance int
+func logEntrySplit(data []byte, atEOF bool) (multilineAdvance int, logLines []byte, err error) {
 	for {
-		advance, token, err = bufio.ScanLines(data, atEOF)
+		advance, token, err := bufio.ScanLines(data, atEOF)
 		if err != nil {
 			return 0, nil, err
 		}
-		if matched, regexpErr := regexp.Match("[I|D],", token); regexpErr != nil || matched || token == nil {
-			if errorLog != nil {
-				return errorAdvance, errorLog, nil
+		if matched, regexpErr := regexp.Match(`\sStarted (GET|POST|PUT|PATCH|DELETE) "`, token); regexpErr != nil || matched || token == nil {
+			if logLines != nil {
+				return multilineAdvance, logLines, nil
 			}
-			return
 		}
 		data = data[advance:]
-		errorAdvance += advance
-		errorLog = append(errorLog, token...)
-		errorLog = append(errorLog, '\n')
+		multilineAdvance += advance
+		logLines = append(logLines, token...)
+		logLines = append(logLines, '\n')
 	}
 }
 
