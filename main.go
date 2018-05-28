@@ -12,13 +12,23 @@ import (
 )
 
 type logEntry struct {
-	isError                 bool
-	timestamp               string
-	PID, status             int
-	exception, lines        string
-	page, level, incomingIP string
-	ARtime, viewTime        int
+	IsError    bool   `json:"isError"`
+	Timestamp  string `json:"timestamp"`
+	Method     string `json:"method"`
+	Lines      string `json:"lines"`
+	Path       string `json:"path"`
+	IncomingIP string `json:"IP"`
+	PID        int    `json:"PID"`
+	Status     int    `json:"status"`
+	ARtime     int    `json:"activeRecordTime"`
+	ViewTime   int    `json:"viewTime"`
 }
+
+var (
+	timestampRegexp = regexp.MustCompile(`\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d*)\s#(\d+)\]`)
+	ipRegexp        = regexp.MustCompile(`Started (GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) (.*) for (\d+\.\d+\.\d+\.\d+)`)
+	levelRegexp     = regexp.MustCompile(`(?m)^F,\s`)
+)
 
 func main() {
 	f, _ := ioutil.ReadFile("assets/small_production.log")
@@ -26,20 +36,42 @@ func main() {
 	scanner.Split(logEntrySplit)
 	for scanner.Scan() {
 		t := scanner.Text()
+		if t == "\n" {
+			return
+		}
 		e := parseLogEntry(t)
+		r, err := e.toJSON()
+		fmt.Printf("%s, %v", r, err)
 		// err := publishToES(e)
 		// if err != nil {
 		// 	log.Fatalf("could not publish to Elastic Search: %v", err)
 		// }
-		fmt.Println(t, e, "---LOG LINE---")
 	}
 }
 
 func parseLogEntry(stringEntry string) (e logEntry) {
-	IPRegexp := regexp.MustCompile(`\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d*)\s#(\d+)\]`)
-	timeData := IPRegexp.FindAllStringSubmatch(stringEntry, -1)[0]
-	e.timestamp = timeData[1]
-	e.PID, _ = strconv.Atoi(timeData[2])
+	e.Lines = stringEntry
+	e.Timestamp, e.PID = getTimestampAndPID(stringEntry)
+	e.Method, e.Path, e.IncomingIP = getIP(stringEntry)
+	e.IsError = levelRegexp.MatchString(stringEntry)
+	if e.IsError {
+		e.Status = 500
+	}
+	return
+}
+
+func getTimestampAndPID(s string) (string, int) {
+	timeData := timestampRegexp.FindAllStringSubmatch(s, -1)[0]
+	pid, _ := strconv.Atoi(timeData[2])
+	return timeData[1], pid
+}
+
+func getIP(s string) (method, path, ip string) {
+	data := ipRegexp.FindAllStringSubmatch(s, -1)
+	if len(data) > 0 {
+		d := data[0]
+		return d[1], d[2], d[3]
+	}
 	return
 }
 
