@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -42,20 +43,23 @@ func main() {
 		e := parseLogEntry(t)
 		r, err := e.toJSON()
 		fmt.Printf("%s, %v", r, err)
-		// err := publishToES(e)
-		// if err != nil {
-		// 	log.Fatalf("could not publish to Elastic Search: %v", err)
-		// }
+		err = publishToES(e)
+		if err != nil {
+			log.Fatalf("could not publish to Elastic Search: %v", err)
+		}
 	}
 }
 
 func parseLogEntry(stringEntry string) (e logEntry) {
 	e.Lines = stringEntry
-	e.Timestamp, e.PID = getTimestampAndPID(stringEntry)
+	timestamp, PID := getTimestampAndPID(stringEntry)
+	e.Timestamp, e.PID = fmt.Sprintf("%sZ", timestamp), PID
 	e.Method, e.Path, e.IncomingIP = getIP(stringEntry)
 	e.IsError = levelRegexp.MatchString(stringEntry)
 	if e.IsError {
 		e.Status = 500
+	} else {
+		e.Status = 200
 	}
 	return
 }
@@ -80,10 +84,11 @@ func publishToES(e logEntry) error {
 	if err != nil {
 		return fmt.Errorf("could not marshal JSON: %v", err)
 	}
-	_, err = http.Post("http://localhost:9200/log_entries/_doc", "application/json", bytes.NewReader(jsonEntry))
+	resp, err := http.Post("http://localhost:9200/log_entries/rails/", "application/json", bytes.NewReader(jsonEntry))
 	if err != nil {
 		return fmt.Errorf("elasticsearch server is unreachable: %v", err)
 	}
+	fmt.Println(resp)
 	return nil
 }
 
