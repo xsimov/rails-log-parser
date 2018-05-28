@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"time"
 )
 
 type logEntry struct {
@@ -32,13 +33,19 @@ var (
 )
 
 func main() {
-	f, _ := ioutil.ReadFile("assets/small_production.log")
+	f, _ := ioutil.ReadFile("assets/production.log")
 	scanner := bufio.NewScanner(bytes.NewReader(f))
 	scanner.Split(logEntrySplit)
+	i := 0
 	for scanner.Scan() {
 		t := scanner.Text()
+		i++
+		if i%1000 == 0 {
+			time.Sleep(500 * time.Millisecond)
+		}
+		fmt.Println(i)
 		if t == "\n" {
-			return
+			continue
 		}
 		e := parseLogEntry(t)
 		r, err := e.toJSON()
@@ -65,9 +72,12 @@ func parseLogEntry(stringEntry string) (e logEntry) {
 }
 
 func getTimestampAndPID(s string) (string, int) {
-	timeData := timestampRegexp.FindAllStringSubmatch(s, -1)[0]
-	pid, _ := strconv.Atoi(timeData[2])
-	return timeData[1], pid
+	timeData := timestampRegexp.FindAllStringSubmatch(s, -1)
+	if len(timeData) > 0 {
+		pid, _ := strconv.Atoi(timeData[0][2])
+		return timeData[0][1], pid
+	}
+	return "", 0
 }
 
 func getIP(s string) (method, path, ip string) {
@@ -99,7 +109,7 @@ func logEntrySplit(data []byte, atEOF bool) (multilineAdvance int, logLines []by
 			return 0, nil, err
 		}
 		if matched, regexpErr := regexp.Match(`\sStarted (GET|POST|PUT|PATCH|DELETE) "`, token); regexpErr != nil || matched || token == nil {
-			if logLines != nil {
+			if advance == 0 || logLines != nil {
 				return multilineAdvance, logLines, nil
 			}
 		}
