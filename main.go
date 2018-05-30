@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
-	"time"
 )
 
 type logEntry struct {
@@ -36,21 +35,13 @@ func main() {
 	f, _ := ioutil.ReadFile("assets/production.log")
 	scanner := bufio.NewScanner(bytes.NewReader(f))
 	scanner.Split(logEntrySplit)
-	i := 0
 	for scanner.Scan() {
 		t := scanner.Text()
-		i++
-		if i%1000 == 0 {
-			time.Sleep(500 * time.Millisecond)
-		}
-		fmt.Println(i)
 		if t == "\n" {
 			continue
 		}
 		e := parseLogEntry(t)
-		r, err := e.toJSON()
-		fmt.Printf("%s, %v", r, err)
-		err = publishToES(e)
+		err := publishToES(e)
 		if err != nil {
 			log.Fatalf("could not publish to Elastic Search: %v", err)
 		}
@@ -98,7 +89,6 @@ func publishToES(e logEntry) error {
 	if err != nil {
 		return fmt.Errorf("elasticsearch server is unreachable: %v", err)
 	}
-	fmt.Println(resp)
 	resp.Body.Close()
 	return nil
 }
