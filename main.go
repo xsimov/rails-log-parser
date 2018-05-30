@@ -99,6 +99,7 @@ func publishToES(e logEntry) error {
 		return fmt.Errorf("elasticsearch server is unreachable: %v", err)
 	}
 	fmt.Println(resp)
+	resp.Body.Close()
 	return nil
 }
 
